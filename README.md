@@ -14,31 +14,35 @@
 
 ### 第二步：配置 AI 功能（必须）
 
-部署完成后，AI 问答功能需要配置 API Key 才能使用：
+部署完成后，AI 问答功能需要配置 API Key 才能使用。
 
-#### 1. 获取豆包 API Key
+#### 推荐：使用 DeepSeek（国内可直接访问）
 
-1. 访问 [火山引擎控制台](https://console.volcengine.com/ark)
-2. 注册/登录火山引擎账号
-3. 开通「豆包大模型」服务（有免费额度）
-4. 点击左侧「API Key 管理」→「创建 API Key」
-5. 复制生成的 API Key
+1. 访问 [DeepSeek 开放平台](https://platform.deepseek.com)
+2. 注册/登录账号（支持微信扫码）
+3. 点击左侧「API Keys」→「创建 API Key」
+4. 复制生成的 API Key
 
-#### 2. 在 Vercel 中配置环境变量
+#### 在 Vercel 中配置环境变量
 
 1. 打开你的 Vercel 项目
 2. 点击 **Settings** → **Environment Variables**
 3. 添加新的环境变量：
-   - **Name**: `DOUBAO_API_KEY`
+   - **Name**: `DEEPSEEK_API_KEY`
    - **Value**: 粘贴你刚才复制的 API Key
 4. 点击 **Save**
 
-#### 3. 重新部署
+#### 重新部署
 
-配置完成后，需要重新部署才能生效：
 1. 点击 **Deployments** 标签
 2. 找到最新的部署记录，点击右侧的三个点 **...**
 3. 选择 **Redeploy**
+
+### 备选：使用 OpenAI
+
+如果你有 OpenAI API Key，也可以配置：
+- **Name**: `OPENAI_API_KEY`
+- **Value**: 你的 OpenAI API Key
 
 ## 本地开发
 
@@ -47,7 +51,7 @@
 pnpm install
 
 # 创建 .env.local 文件并配置 API Key
-echo "DOUBAO_API_KEY=你的API_Key" > .env.local
+echo "DEEPSEEK_API_KEY=你的API_Key" > .env.local
 
 # 启动开发服务器
 pnpm dev
@@ -74,9 +78,13 @@ pnpm dev
 ### Q: AI 不回答问题怎么办？
 
 请检查：
-1. 是否已在 Vercel 环境变量中配置 `DOUBAO_API_KEY`
+1. 是否已在 Vercel 环境变量中配置 `DEEPSEEK_API_KEY`
 2. 配置后是否已重新部署项目
-3. API Key 是否有效（可以在火山引擎控制台查看）
+3. API Key 是否有效（可以在 DeepSeek 控制台查看）
+
+### Q: 出现 403 错误？
+
+如果使用豆包 API 出现地区限制错误，请改用 DeepSeek API，国内可直接访问。
 
 ### Q: 上传 PDF/Word 后内容为空？
 

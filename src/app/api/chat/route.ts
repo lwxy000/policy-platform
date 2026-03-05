@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server';
-import { LLMClient, Config } from 'coze-coding-dev-sdk';
 
 // 构建制度知识库上下文
 function buildKnowledgeContext(documents: any[]): string {
@@ -23,14 +22,17 @@ function buildKnowledgeContext(documents: any[]): string {
 
 export async function POST(request: NextRequest) {
   try {
-    // 检查 API Key 配置
-    const apiKey = process.env.DOUBAO_API_KEY;
+    // 检查 API Key 配置 - 支持 DeepSeek 或 OpenAI
+    const apiKey = process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY;
+    const apiBaseUrl = process.env.DEEPSEEK_API_KEY 
+      ? 'https://api.deepseek.com/v1'
+      : process.env.OPENAI_API_BASE || 'https://api.openai.com/v1';
     
     if (!apiKey) {
-      console.error('DOUBAO_API_KEY not configured');
+      console.error('API Key not configured');
       return new Response(JSON.stringify({ 
         error: 'API Key 未配置',
-        message: '请在 Vercel 环境变量中配置 DOUBAO_API_KEY。\n\n获取方式：\n1. 访问 https://console.volcengine.com/ark\n2. 注册/登录火山引擎\n3. 开通豆包大模型服务\n4. 创建 API Key 并复制\n5. 在 Vercel 项目设置 → Environment Variables 中添加 DOUBAO_API_KEY'
+        message: '请在 Vercel 环境变量中配置 DEEPSEEK_API_KEY 或 OPENAI_API_KEY。\n\n推荐使用 DeepSeek（国内可直接访问）：\n1. 访问 https://platform.deepseek.com\n2. 注册/登录账号\n3. 创建 API Key\n4. 在 Vercel 添加环境变量 DEEPSEEK_API_KEY'
       }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
@@ -49,10 +51,6 @@ export async function POST(request: NextRequest) {
 
     // 检查是否有文档
     const hasDocuments = documents && documents.length > 0;
-
-    // 使用用户配置的 API Key 初始化客户端
-    const config = new Config({ apiKey });
-    const client = new LLMClient(config);
 
     // 构建系统提示
     let systemPrompt: string;
@@ -91,38 +89,90 @@ ${knowledgeContext}
 
     // 构建完整的消息列表
     const fullMessages = [
-      { role: 'system' as const, content: systemPrompt },
+      { role: 'system', content: systemPrompt },
       ...messages.map((msg: any) => ({
-        role: msg.role as 'user' | 'assistant',
+        role: msg.role,
         content: msg.content,
       })),
     ];
 
-    // 创建流式响应
+    // 调用 OpenAI 兼容 API
+    const response = await fetch(`${apiBaseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: process.env.DEEPSEEK_API_KEY ? 'deepseek-chat' : (process.env.OPENAI_MODEL || 'gpt-3.5-turbo'),
+        messages: fullMessages,
+        temperature: 0.7,
+        stream: true,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('API error:', response.status, errorText);
+      
+      let errorMessage = `API 调用失败 (${response.status})`;
+      if (response.status === 401) {
+        errorMessage = 'API Key 无效，请检查配置';
+      } else if (response.status === 403) {
+        errorMessage = 'API 访问受限，建议使用 DeepSeek API（国内可直接访问）';
+      } else if (response.status === 429) {
+        errorMessage = 'API 请求频率超限，请稍后重试';
+      }
+      
+      return new Response(JSON.stringify({ error: errorMessage }), {
+        status: response.status,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // 流式转发响应
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
-        try {
-          const llmStream = client.stream(fullMessages, {
-            model: 'doubao-seed-1-6-251015',
-            temperature: 0.7,
-          });
+        const reader = response.body?.getReader();
+        if (!reader) {
+          controller.close();
+          return;
+        }
 
-          for await (const chunk of llmStream) {
-            if (chunk.content) {
-              const text = chunk.content.toString();
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`));
+        const decoder = new TextDecoder();
+        
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6);
+                if (data === '[DONE]') {
+                  controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                  continue;
+                }
+
+                try {
+                  const parsed = JSON.parse(data);
+                  const content = parsed.choices?.[0]?.delta?.content;
+                  if (content) {
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`));
+                  }
+                } catch {
+                  // 忽略解析错误
+                }
+              }
             }
           }
-
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           controller.close();
-        } catch (error: any) {
+        } catch (error) {
           console.error('Stream error:', error);
-          const errorMessage = error?.message || '生成回复时出现错误';
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ error: errorMessage })}\n\n`)
-          );
           controller.close();
         }
       },
