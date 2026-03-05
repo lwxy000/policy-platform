@@ -4,21 +4,19 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: {
-    default: '采购流程与制度查询 | 企业服务平台',
-    template: '%s | 企业采购平台',
+    default: '企业制度查询平台 | 智能问答',
+    template: '%s | 企业制度平台',
   },
   description:
-    '企业采购流程与制度查询平台，提供采购流程指引、制度文档查询、审批流程说明等服务，方便员工快速了解和查询采购相关信息。',
+    '企业制度查询平台，支持上传制度文档，AI智能问答，帮助员工快速了解公司制度和流程。',
   keywords: [
-    '采购流程',
-    '采购制度',
-    '企业采购',
-    '采购审批',
-    '供应商管理',
-    '合同管理',
-    '采购指南',
+    '企业制度',
+    '制度查询',
+    '智能问答',
+    '文档管理',
+    '流程查询',
   ],
-  authors: [{ name: '企业采购部' }],
+  authors: [{ name: '企业管理部' }],
   generator: 'Coze Code',
   // icons: {
   //   icon: '',

@@ -34,7 +34,7 @@ export function ChatAssistant({ isOpen, onToggle }: ChatAssistantProps) {
     {
       id: '1',
       role: 'assistant',
-      content: '你好！我是采购制度智能助手 💡\n\n我可以帮你解答关于采购流程、审批规定、供应商管理等问题。有什么想问的吗？',
+      content: '你好！我是企业制度智能助手 💡\n\n你可以问我关于公司制度的任何问题。如果还没有上传制度文档，请先点击右上角的"上传制度"按钮上传文档哦~',
       timestamp: new Date(),
     },
   ]);
@@ -155,10 +155,10 @@ export function ChatAssistant({ isOpen, onToggle }: ChatAssistantProps) {
 
   // 快捷问题
   const quickQuestions = [
-    '采购审批流程是什么？',
-    '如何选择供应商？',
-    '紧急采购怎么办理？',
-    '付款流程是怎样的？',
+    '有哪些制度文档？',
+    '帮我查一下流程',
+    '这个需要怎么审批？',
+    '需要提交什么材料？',
   ];
 
   if (!isOpen) {
