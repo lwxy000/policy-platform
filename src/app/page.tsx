@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { ChatAssistant } from '@/components/ChatAssistant';
 import { 
   Search, 
   FileText, 
@@ -27,6 +28,7 @@ import {
   Clock,
   Building2,
   FileQuestion,
+  MessageCircle,
 } from 'lucide-react';
 import { procurementProcesses, policyCategories, quickLinks } from '@/lib/data';
 
@@ -51,6 +53,7 @@ const iconMap: Record<string, any> = {
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   // 搜索过滤
   const filteredCategories = useMemo(() => {
@@ -307,11 +310,23 @@ export default function Home() {
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-500 dark:text-slate-400">
             <p>© 2024 企业采购服务平台 · 内部使用</p>
             <div className="flex gap-4">
-              <span>如有疑问请联系采购部</span>
+              <span>如有疑问可咨询智能助手</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => setIsChatOpen(true)}
+              >
+                <MessageCircle className="h-4 w-4" />
+                智能问答
+              </Button>
             </div>
           </div>
         </div>
       </footer>
+
+      {/* 智能问答助手 */}
+      <ChatAssistant isOpen={isChatOpen} onToggle={() => setIsChatOpen(!isChatOpen)} />
     </div>
   );
 }
