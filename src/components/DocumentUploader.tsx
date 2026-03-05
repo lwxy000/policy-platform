@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -32,13 +31,7 @@ import {
   AlertCircle,
   Trash2,
 } from 'lucide-react';
-import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
-
-// 设置 PDF.js worker
-if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-}
 
 interface UploadedDocument {
   id: string;
@@ -92,7 +85,13 @@ export function DocumentUploader({
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
   const [parseProgress, setParseProgress] = useState('');
+  const [isClient, setIsClient] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 确保只在客户端渲染
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -106,9 +105,16 @@ export function DocumentUploader({
     }
   };
 
-  // 解析 PDF 文件
+  // 解析 PDF 文件 - 动态导入
   const parsePDF = async (file: File): Promise<string> => {
     setParseProgress('正在解析 PDF 文件...');
+    
+    // 动态导入 pdf.js，避免服务端渲染问题
+    const pdfjsLib = await import('pdfjs-dist');
+    
+    // 设置 worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+    
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     
@@ -248,6 +254,11 @@ export function DocumentUploader({
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
+
+  // 服务端渲染时显示加载状态
+  if (!isClient) {
+    return null;
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
