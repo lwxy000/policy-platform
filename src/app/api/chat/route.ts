@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { LLMClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
 import { procurementProcesses, policyCategories } from '@/lib/data';
+import { documentsStore } from '@/lib/documents-store';
 
 // 构建制度知识库上下文
 function buildKnowledgeContext(): string {
@@ -26,6 +27,18 @@ function buildKnowledgeContext(): string {
       context += `${doc.content}\n\n`;
     });
   });
+
+  // 添加用户上传的文档
+  const uploadedDocs = documentsStore.getAll();
+  if (uploadedDocs.length > 0) {
+    context += '## 上传的制度文档\n\n';
+    uploadedDocs.forEach(doc => {
+      context += `### ${doc.title}\n`;
+      context += `分类: ${doc.category}\n`;
+      context += `上传时间: ${doc.uploadTime}\n\n`;
+      context += `${doc.content}\n\n`;
+    });
+  }
 
   return context;
 }

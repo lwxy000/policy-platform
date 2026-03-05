@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { ChatAssistant } from '@/components/ChatAssistant';
+import { DocumentUploader } from '@/components/DocumentUploader';
 import { 
   Search, 
   FileText, 
@@ -29,6 +30,8 @@ import {
   Building2,
   FileQuestion,
   MessageCircle,
+  Upload,
+  Settings,
 } from 'lucide-react';
 import { procurementProcesses, policyCategories, quickLinks } from '@/lib/data';
 
@@ -54,6 +57,24 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [uploadedDocuments, setUploadedDocuments] = useState<any[]>([]);
+
+  // 获取已上传文档
+  const fetchDocuments = async () => {
+    try {
+      const response = await fetch('/api/documents');
+      const data = await response.json();
+      setUploadedDocuments(data.documents || []);
+    } catch (error) {
+      console.error('Failed to fetch documents:', error);
+    }
+  };
+
+  // 初始化加载文档
+  useEffect(() => {
+    fetchDocuments();
+  }, []);
 
   // 搜索过滤
   const filteredCategories = useMemo(() => {
@@ -91,11 +112,20 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-4">
               <Badge variant="secondary" className="hidden sm:flex">
-                {totalDocuments} 项制度
+                {totalDocuments + uploadedDocuments.length} 项制度
               </Badge>
               <Badge variant="outline" className="hidden sm:flex">
                 {totalProcesses} 个流程节点
               </Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => setIsUploadOpen(true)}
+              >
+                <Upload className="h-4 w-4" />
+                <span className="hidden sm:inline">上传制度</span>
+              </Button>
             </div>
           </div>
         </div>
@@ -327,6 +357,14 @@ export default function Home() {
 
       {/* 智能问答助手 */}
       <ChatAssistant isOpen={isChatOpen} onToggle={() => setIsChatOpen(!isChatOpen)} />
+
+      {/* 文档上传对话框 */}
+      <DocumentUploader
+        isOpen={isUploadOpen}
+        onOpenChange={setIsUploadOpen}
+        documents={uploadedDocuments}
+        onDocumentsChange={fetchDocuments}
+      />
     </div>
   );
 }
