@@ -1,19 +1,16 @@
 import { NextRequest } from 'next/server';
 import { LLMClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
-import { documentsStore } from '@/lib/documents-store';
 
 // 构建制度知识库上下文
-function buildKnowledgeContext(): string {
-  const uploadedDocs = documentsStore.getAll();
-  
-  if (uploadedDocs.length === 0) {
+function buildKnowledgeContext(documents: any[]): string {
+  if (!documents || documents.length === 0) {
     return '';
   }
 
   let context = '# 企业制度知识库\n\n';
   context += '以下是企业上传的制度文档内容：\n\n';
   
-  uploadedDocs.forEach(doc => {
+  documents.forEach(doc => {
     context += `## ${doc.title}\n`;
     context += `分类: ${doc.category}\n`;
     context += `上传时间: ${doc.uploadTime}\n\n`;
@@ -24,7 +21,41 @@ function buildKnowledgeContext(): string {
   return context;
 }
 
-const SYSTEM_PROMPT = `你是企业制度智能助手，帮助员工解答关于公司各项流程、制度规定等问题。
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { messages, documents } = body;
+
+    if (!messages || !Array.isArray(messages)) {
+      return new Response(JSON.stringify({ error: '无效的请求参数' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // 检查是否有文档
+    const hasDocuments = documents && documents.length > 0;
+
+    // 提取并转发请求头
+    const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
+    const config = new Config();
+    const client = new LLMClient(config, customHeaders);
+
+    // 构建系统提示
+    let systemPrompt: string;
+    
+    if (!hasDocuments) {
+      systemPrompt = `你是企业制度智能助手。
+
+当前系统中暂无制度文档，请友好地告知用户：
+1. 系统暂未上传任何制度文档
+2. 请点击页面右上角的"上传制度"按钮上传制度文档
+3. 上传后AI将自动学习文档内容，即可进行智能问答
+
+请用友好的语气引导用户上传文档，可以使用表情符号增加亲和力。`;
+    } else {
+      const knowledgeContext = buildKnowledgeContext(documents);
+      systemPrompt = `你是企业制度智能助手，帮助员工解答关于公司各项流程、制度规定等问题。
 
 ## 你的职责
 1. 准确回答员工关于公司制度的问题
@@ -40,41 +71,9 @@ const SYSTEM_PROMPT = `你是企业制度智能助手，帮助员工解答关于
 5. 使用友好的语气，适当使用表情符号增加亲和力
 
 ## 当前知识库内容
-${buildKnowledgeContext() || '（暂无制度文档，请先上传制度文档）'}
+${knowledgeContext}
 
-请根据以上知识库内容，为员工提供准确的制度咨询服务。如果知识库为空，请提示用户先上传制度文档。`;
-
-export async function POST(request: NextRequest) {
-  try {
-    const { messages } = await request.json();
-
-    if (!messages || !Array.isArray(messages)) {
-      return new Response(JSON.stringify({ error: '无效的请求参数' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    // 检查是否有文档
-    const uploadedDocs = documentsStore.getAll();
-    const hasDocuments = uploadedDocs.length > 0;
-
-    // 提取并转发请求头
-    const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
-    const config = new Config();
-    const client = new LLMClient(config, customHeaders);
-
-    // 如果没有文档，使用特殊提示
-    let systemPrompt = SYSTEM_PROMPT;
-    if (!hasDocuments) {
-      systemPrompt = `你是企业制度智能助手。
-
-当前系统中暂无制度文档，请友好地告知用户：
-1. 系统暂未上传任何制度文档
-2. 请点击页面右上角的"上传制度"按钮上传Word、PDF等格式的制度文档
-3. 上传后AI将自动学习文档内容，即可进行智能问答
-
-请用友好的语气引导用户上传文档，可以使用表情符号增加亲和力。`;
+请根据以上知识库内容，为员工提供准确的制度咨询服务。`;
     }
 
     // 构建完整的消息列表
@@ -99,12 +98,10 @@ export async function POST(request: NextRequest) {
           for await (const chunk of llmStream) {
             if (chunk.content) {
               const text = chunk.content.toString();
-              // SSE 格式: data: {text}\n\n
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`));
             }
           }
 
-          // 发送结束标记
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           controller.close();
         } catch (error) {

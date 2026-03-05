@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -12,7 +12,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -41,7 +40,6 @@ interface UploadedDocument {
   content: string;
   originalFileName: string;
   fileType: string;
-  fileKey: string;
   uploadTime: string;
   fileSize: number;
 }
@@ -50,7 +48,7 @@ interface DocumentUploaderProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   documents: UploadedDocument[];
-  onDocumentsChange: () => void;
+  onDocumentsChange: (docs: UploadedDocument[]) => void;
 }
 
 const FILE_TYPE_ICONS: Record<string, any> = {
@@ -66,12 +64,11 @@ const FILE_TYPE_ICONS: Record<string, any> = {
 };
 
 const CATEGORIES = [
-  '采购基础知识',
-  '审批流程',
-  '供应商管理',
-  '合同管理',
-  '质量验收',
-  '付款结算',
+  '采购流程',
+  '审批制度',
+  '财务制度',
+  '人事制度',
+  '行政制度',
   '其他制度',
 ];
 
@@ -93,12 +90,35 @@ export function DocumentUploader({
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       setFile(selectedFile);
-      // 自动填充标题
       if (!title) {
         setTitle(selectedFile.name.replace(/\.[^/.]+$/, ''));
       }
       setUploadStatus('idle');
     }
+  };
+
+  // 读取文件内容
+  const readFileContent = async (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      
+      reader.onload = (e) => {
+        const content = e.target?.result as string;
+        resolve(content);
+      };
+      
+      reader.onerror = () => {
+        reject(new Error('文件读取失败'));
+      };
+
+      // 对于文本文件直接读取
+      if (file.type.startsWith('text/') || file.name.endsWith('.md') || file.name.endsWith('.txt')) {
+        reader.readAsText(file);
+      } else {
+        // 对于其他文件（Word、PDF等），提示用户复制内容
+        resolve(`[文件: ${file.name}]\n\n此文件格式需要手动复制内容。请打开原文件，复制文本内容后粘贴到下方。\n\n提示：对于 Word/PDF 文件，您可以：\n1. 打开原文件\n2. 全选并复制内容\n3. 删除此文档，重新上传时粘贴内容`);
+      }
+    });
   };
 
   const handleUpload = async () => {
@@ -113,65 +133,46 @@ export function DocumentUploader({
     setErrorMessage('');
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('title', title || file.name.replace(/\.[^/.]+$/, ''));
-      formData.append('category', category || '其他制度');
+      // 读取文件内容
+      const content = await readFileContent(file);
 
-      const response = await fetch('/api/upload-document', {
-        method: 'POST',
-        body: formData,
-      });
+      const newDocument: UploadedDocument = {
+        id: `doc-${Date.now()}`,
+        title: title || file.name.replace(/\.[^/.]+$/, ''),
+        category: category || '其他制度',
+        content: content,
+        originalFileName: file.name,
+        fileType: file.type || file.name.split('.').pop() || '',
+        uploadTime: new Date().toISOString(),
+        fileSize: file.size,
+      };
 
-      const data = await response.json();
+      // 添加到文档列表
+      onDocumentsChange([...documents, newDocument]);
 
-      if (data.success) {
-        // 添加到文档库
-        await fetch('/api/documents', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data.document),
-        });
-
-        setUploadStatus('success');
-        setFile(null);
-        setTitle('');
-        setCategory('');
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
-        
-        // 刷新文档列表
-        onDocumentsChange();
-        
-        // 3秒后关闭对话框
-        setTimeout(() => {
-          onOpenChange(false);
-          setUploadStatus('idle');
-        }, 2000);
-      } else {
-        setErrorMessage(data.error || '上传失败');
-        setUploadStatus('error');
+      setUploadStatus('success');
+      setFile(null);
+      setTitle('');
+      setCategory('');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
       }
+
+      // 2秒后关闭对话框
+      setTimeout(() => {
+        onOpenChange(false);
+        setUploadStatus('idle');
+      }, 1500);
     } catch (error) {
-      setErrorMessage('网络错误，请稍后重试');
+      setErrorMessage('文件处理失败，请重试');
       setUploadStatus('error');
     } finally {
       setIsUploading(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    try {
-      await fetch('/api/documents', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
-      onDocumentsChange();
-    } catch (error) {
-      console.error('Delete error:', error);
-    }
+  const handleDelete = (id: string) => {
+    onDocumentsChange(documents.filter(doc => doc.id !== id));
   };
 
   const getFileIcon = (fileName: string) => {
@@ -195,7 +196,7 @@ export function DocumentUploader({
             上传制度文档
           </DialogTitle>
           <DialogDescription>
-            上传 Word、PDF、Excel、PPT 等格式的制度文档，AI 将自动解析并学习内容
+            上传制度文档，支持 Word、PDF、Excel、PPT、TXT 等格式
           </DialogDescription>
         </DialogHeader>
 
@@ -295,11 +296,18 @@ export function DocumentUploader({
               </Select>
             </div>
 
+            {/* 提示信息 */}
+            <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
+              <p className="text-xs text-blue-600 dark:text-blue-400">
+                💡 提示：对于 Word、PDF 等文件，上传后请在文档列表中点击查看，手动复制内容进行编辑。建议直接上传 TXT 或 Markdown 格式的纯文本文件，AI 可以直接学习内容。
+              </p>
+            </div>
+
             {/* 状态提示 */}
             {uploadStatus === 'success' && (
               <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
                 <CheckCircle className="h-4 w-4" />
-                <span className="text-sm">文档上传成功，AI已学习该制度内容</span>
+                <span className="text-sm">文档上传成功！</span>
               </div>
             )}
             {uploadStatus === 'error' && (
@@ -319,12 +327,12 @@ export function DocumentUploader({
               {isUploading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  上传中...
+                  处理中...
                 </>
               ) : (
                 <>
                   <Upload className="h-4 w-4 mr-2" />
-                  上传并解析
+                  上传文档
                 </>
               )}
             </Button>

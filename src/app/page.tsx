@@ -14,8 +14,8 @@ import {
   FileQuestion,
   MessageCircle,
   Upload,
+  Settings,
 } from 'lucide-react';
-import { quickLinks } from '@/lib/data';
 
 // 图标映射
 const iconMap: Record<string, any> = {
@@ -24,28 +24,41 @@ const iconMap: Record<string, any> = {
   MessageCircle,
 };
 
+// 从 localStorage 加载文档
+const loadDocuments = () => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const saved = localStorage.getItem('policy-documents');
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+};
+
+// 保存文档到 localStorage
+const saveDocuments = (docs: any[]) => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('policy-documents', JSON.stringify(docs));
+};
+
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState('all');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [uploadedDocuments, setUploadedDocuments] = useState<any[]>([]);
+  const [isClient, setIsClient] = useState(false);
 
-  // 获取已上传文档
-  const fetchDocuments = async () => {
-    try {
-      const response = await fetch('/api/documents');
-      const data = await response.json();
-      setUploadedDocuments(data.documents || []);
-    } catch (error) {
-      console.error('Failed to fetch documents:', error);
-    }
-  };
-
-  // 初始化加载文档
+  // 客户端初始化
   useEffect(() => {
-    fetchDocuments();
+    setIsClient(true);
+    setUploadedDocuments(loadDocuments());
   }, []);
+
+  // 保存文档
+  const handleDocumentsChange = (docs: any[]) => {
+    setUploadedDocuments(docs);
+    saveDocuments(docs);
+  };
 
   // 搜索上传的文档
   const filteredDocuments = useMemo(() => {
@@ -55,6 +68,10 @@ export default function Home() {
       doc.content?.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [searchQuery, uploadedDocuments]);
+
+  if (!isClient) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 dark:from-slate-950 dark:via-blue-950 dark:to-slate-900">
@@ -97,7 +114,7 @@ export default function Home() {
               <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
               <Input
                 type="text"
-                placeholder="搜索流程、制度、文档..."
+                placeholder="搜索制度文档..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="h-14 pl-12 pr-4 text-base shadow-lg"
@@ -109,30 +126,6 @@ export default function Home() {
               </p>
             )}
           </div>
-        </div>
-
-        {/* 快速入口 */}
-        <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {quickLinks.map((link, index) => {
-            const IconComponent = iconMap[link.icon] || FileText;
-            return (
-              <Card 
-                key={index} 
-                className="group cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1"
-              >
-                <CardContent className="flex items-center gap-4 p-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-950 group-hover:bg-blue-100 dark:group-hover:bg-blue-900 transition-colors">
-                    <IconComponent className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-semibold text-slate-900 dark:text-white text-sm">{link.title}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">{link.description}</p>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-blue-500 transition-colors" />
-                </CardContent>
-              </Card>
-            );
-          })}
         </div>
 
         {/* 主内容区域 */}
@@ -149,7 +142,7 @@ export default function Home() {
                     暂无制度文档
                   </h3>
                   <p className="text-slate-500 dark:text-slate-400 mb-4 max-w-md">
-                    请点击右上角的"上传制度"按钮，上传 Word、PDF、Excel 等格式的制度文档
+                    请点击右上角的"上传制度"按钮，上传制度文档
                   </p>
                   <Button onClick={() => setIsUploadOpen(true)} className="gap-2">
                     <Upload className="h-4 w-4" />
@@ -170,7 +163,7 @@ export default function Home() {
                 </Button>
               </div>
               <div className="grid gap-3">
-                {uploadedDocuments.map((doc) => {
+                {filteredDocuments.map((doc) => {
                   const FileIcon = FileText;
                   return (
                     <Card key={doc.id} className="hover:shadow-md transition-shadow">
@@ -228,32 +221,27 @@ export default function Home() {
       <footer className="border-t bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm mt-12">
         <div className="container mx-auto px-4 py-6">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-500 dark:text-slate-400">
-            <p>© 2024 企业采购服务平台 · 内部使用</p>
+            <p>企业制度查询平台 · 内部使用</p>
             <div className="flex gap-4">
-              <span>如有疑问可咨询智能助手</span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={() => setIsChatOpen(true)}
-              >
-                <MessageCircle className="h-4 w-4" />
-                智能问答
-              </Button>
+              <span>数据保存在本地浏览器</span>
             </div>
           </div>
         </div>
       </footer>
 
       {/* 智能问答助手 */}
-      <ChatAssistant isOpen={isChatOpen} onToggle={() => setIsChatOpen(!isChatOpen)} />
+      <ChatAssistant 
+        isOpen={isChatOpen} 
+        onToggle={() => setIsChatOpen(!isChatOpen)} 
+        documents={uploadedDocuments}
+      />
 
       {/* 文档上传对话框 */}
       <DocumentUploader
         isOpen={isUploadOpen}
         onOpenChange={setIsUploadOpen}
         documents={uploadedDocuments}
-        onDocumentsChange={fetchDocuments}
+        onDocumentsChange={handleDocumentsChange}
       />
     </div>
   );

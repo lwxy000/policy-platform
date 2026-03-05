@@ -27,14 +27,17 @@ interface Message {
 interface ChatAssistantProps {
   isOpen: boolean;
   onToggle: () => void;
+  documents: any[];
 }
 
-export function ChatAssistant({ isOpen, onToggle }: ChatAssistantProps) {
+export function ChatAssistant({ isOpen, onToggle, documents }: ChatAssistantProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       role: 'assistant',
-      content: '你好！我是企业制度智能助手 💡\n\n你可以问我关于公司制度的任何问题。如果还没有上传制度文档，请先点击右上角的"上传制度"按钮上传文档哦~',
+      content: documents.length > 0 
+        ? `你好！我是企业制度智能助手 💡\n\n我已经学习了 ${documents.length} 份制度文档。你可以问我关于制度的任何问题！`
+        : '你好！我是企业制度智能助手 💡\n\n请先上传制度文档，我才能帮你解答问题。点击右上角的"上传制度"按钮上传文档。',
       timestamp: new Date(),
     },
   ]);
@@ -80,6 +83,7 @@ export function ChatAssistant({ isOpen, onToggle }: ChatAssistantProps) {
             role: m.role,
             content: m.content,
           })),
+          documents: documents,
         }),
       });
 
@@ -154,12 +158,9 @@ export function ChatAssistant({ isOpen, onToggle }: ChatAssistantProps) {
   };
 
   // 快捷问题
-  const quickQuestions = [
-    '有哪些制度文档？',
-    '帮我查一下流程',
-    '这个需要怎么审批？',
-    '需要提交什么材料？',
-  ];
+  const quickQuestions = documents.length > 0
+    ? ['有哪些制度文档？', '帮我查一下流程', '这个需要怎么审批？', '需要提交什么材料？']
+    : ['如何上传制度文档？'];
 
   if (!isOpen) {
     return (
@@ -186,7 +187,7 @@ export function ChatAssistant({ isOpen, onToggle }: ChatAssistantProps) {
           <div>
             <CardTitle className="text-base font-semibold">智能助手</CardTitle>
             {!isMinimized && (
-              <p className="text-xs text-white/80">采购制度问答</p>
+              <p className="text-xs text-white/80">制度问答</p>
             )}
           </div>
         </div>
