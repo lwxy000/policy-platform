@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { LLMClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
+import { LLMClient, Config } from 'coze-coding-dev-sdk';
 
 // 构建制度知识库上下文
 function buildKnowledgeContext(documents: any[]): string {
@@ -23,6 +23,20 @@ function buildKnowledgeContext(documents: any[]): string {
 
 export async function POST(request: NextRequest) {
   try {
+    // 检查 API Key 配置
+    const apiKey = process.env.DOUBAO_API_KEY;
+    
+    if (!apiKey) {
+      console.error('DOUBAO_API_KEY not configured');
+      return new Response(JSON.stringify({ 
+        error: 'API Key 未配置',
+        message: '请在 Vercel 环境变量中配置 DOUBAO_API_KEY。\n\n获取方式：\n1. 访问 https://console.volcengine.com/ark\n2. 注册/登录火山引擎\n3. 开通豆包大模型服务\n4. 创建 API Key 并复制\n5. 在 Vercel 项目设置 → Environment Variables 中添加 DOUBAO_API_KEY'
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     const body = await request.json();
     const { messages, documents } = body;
 
@@ -36,10 +50,9 @@ export async function POST(request: NextRequest) {
     // 检查是否有文档
     const hasDocuments = documents && documents.length > 0;
 
-    // 提取并转发请求头
-    const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
-    const config = new Config();
-    const client = new LLMClient(config, customHeaders);
+    // 使用用户配置的 API Key 初始化客户端
+    const config = new Config({ apiKey });
+    const client = new LLMClient(config);
 
     // 构建系统提示
     let systemPrompt: string;
@@ -52,7 +65,7 @@ export async function POST(request: NextRequest) {
 2. 请点击页面右上角的"上传制度"按钮上传制度文档
 3. 上传后AI将自动学习文档内容，即可进行智能问答
 
-请用友好的语气引导用户上传文档，可以使用表情符号增加亲和力。`;
+请用友好的语气引导用户上传文档。`;
     } else {
       const knowledgeContext = buildKnowledgeContext(documents);
       systemPrompt = `你是企业制度智能助手，帮助员工解答关于公司各项流程、制度规定等问题。
@@ -68,7 +81,7 @@ export async function POST(request: NextRequest) {
 2. 回答要准确、简洁、实用
 3. 如果知识库中没有相关信息，友好地告知用户需要联系相关负责人
 4. 提供具体的操作步骤和所需材料
-5. 使用友好的语气，适当使用表情符号增加亲和力
+5. 使用友好的语气
 
 ## 当前知识库内容
 ${knowledgeContext}
@@ -104,10 +117,11 @@ ${knowledgeContext}
 
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           controller.close();
-        } catch (error) {
+        } catch (error: any) {
           console.error('Stream error:', error);
+          const errorMessage = error?.message || '生成回复时出现错误';
           controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ error: '生成回复时出现错误' })}\n\n`)
+            encoder.encode(`data: ${JSON.stringify({ error: errorMessage })}\n\n`)
           );
           controller.close();
         }
@@ -121,9 +135,12 @@ ${knowledgeContext}
         'Connection': 'keep-alive',
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('API error:', error);
-    return new Response(JSON.stringify({ error: '服务器内部错误' }), {
+    return new Response(JSON.stringify({ 
+      error: '服务器内部错误',
+      message: error?.message 
+    }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
