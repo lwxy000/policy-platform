@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -32,6 +32,13 @@ import {
   AlertCircle,
   Trash2,
 } from 'lucide-react';
+import * as pdfjsLib from 'pdfjs-dist';
+import mammoth from 'mammoth';
+
+// 设置 PDF.js worker
+if (typeof window !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+}
 
 interface UploadedDocument {
   id: string;
@@ -84,6 +91,7 @@ export function DocumentUploader({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+  const [parseProgress, setParseProgress] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -94,31 +102,77 @@ export function DocumentUploader({
         setTitle(selectedFile.name.replace(/\.[^/.]+$/, ''));
       }
       setUploadStatus('idle');
+      setParseProgress('');
     }
   };
 
-  // 读取文件内容
-  const readFileContent = async (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      
-      reader.onload = (e) => {
-        const content = e.target?.result as string;
-        resolve(content);
-      };
-      
-      reader.onerror = () => {
-        reject(new Error('文件读取失败'));
-      };
+  // 解析 PDF 文件
+  const parsePDF = async (file: File): Promise<string> => {
+    setParseProgress('正在解析 PDF 文件...');
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    
+    let fullText = '';
+    const totalPages = pdf.numPages;
+    
+    for (let i = 1; i <= totalPages; i++) {
+      setParseProgress(`正在解析 PDF 第 ${i}/${totalPages} 页...`);
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items
+        .map((item: any) => item.str)
+        .join(' ');
+      fullText += pageText + '\n';
+    }
+    
+    return fullText.trim();
+  };
 
-      // 对于文本文件直接读取
-      if (file.type.startsWith('text/') || file.name.endsWith('.md') || file.name.endsWith('.txt')) {
-        reader.readAsText(file);
-      } else {
-        // 对于其他文件（Word、PDF等），提示用户复制内容
-        resolve(`[文件: ${file.name}]\n\n此文件格式需要手动复制内容。请打开原文件，复制文本内容后粘贴到下方。\n\n提示：对于 Word/PDF 文件，您可以：\n1. 打开原文件\n2. 全选并复制内容\n3. 删除此文档，重新上传时粘贴内容`);
-      }
-    });
+  // 解析 Word 文件
+  const parseWord = async (file: File): Promise<string> => {
+    setParseProgress('正在解析 Word 文件...');
+    const arrayBuffer = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    return result.value.trim();
+  };
+
+  // 解析文本文件
+  const parseTextFile = async (file: File): Promise<string> => {
+    setParseProgress('正在读取文本文件...');
+    return await file.text();
+  };
+
+  // 根据文件类型选择解析方法
+  const readFileContent = async (file: File): Promise<string> => {
+    const extension = file.name.split('.').pop()?.toLowerCase() || '';
+    const mimeType = file.type;
+
+    // PDF 文件
+    if (extension === 'pdf' || mimeType === 'application/pdf') {
+      return await parsePDF(file);
+    }
+
+    // Word 文件
+    if (
+      extension === 'doc' || 
+      extension === 'docx' ||
+      mimeType === 'application/msword' ||
+      mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ) {
+      return await parseWord(file);
+    }
+
+    // 文本文件
+    if (
+      mimeType.startsWith('text/') ||
+      extension === 'txt' ||
+      extension === 'md'
+    ) {
+      return await parseTextFile(file);
+    }
+
+    // 其他文件类型，提示不支持
+    return `[文件: ${file.name}]\n\n此文件格式暂不支持自动解析。支持的格式：\n- PDF 文档 (.pdf)\n- Word 文档 (.doc, .docx)\n- 文本文件 (.txt, .md)\n\n建议将内容复制后保存为上述格式再上传。`;
   };
 
   const handleUpload = async () => {
@@ -131,10 +185,15 @@ export function DocumentUploader({
     setIsUploading(true);
     setUploadStatus('idle');
     setErrorMessage('');
+    setParseProgress('');
 
     try {
-      // 读取文件内容
+      // 读取并解析文件内容
       const content = await readFileContent(file);
+
+      if (!content || content.trim().length === 0) {
+        throw new Error('文件内容为空，无法解析');
+      }
 
       const newDocument: UploadedDocument = {
         id: `doc-${Date.now()}`,
@@ -150,6 +209,7 @@ export function DocumentUploader({
       // 添加到文档列表
       onDocumentsChange([...documents, newDocument]);
 
+      setParseProgress('');
       setUploadStatus('success');
       setFile(null);
       setTitle('');
@@ -158,14 +218,16 @@ export function DocumentUploader({
         fileInputRef.current.value = '';
       }
 
-      // 2秒后关闭对话框
+      // 1.5秒后关闭对话框
       setTimeout(() => {
         onOpenChange(false);
         setUploadStatus('idle');
       }, 1500);
-    } catch (error) {
-      setErrorMessage('文件处理失败，请重试');
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      setErrorMessage(error.message || '文件处理失败，请重试');
       setUploadStatus('error');
+      setParseProgress('');
     } finally {
       setIsUploading(false);
     }
@@ -196,7 +258,7 @@ export function DocumentUploader({
             上传制度文档
           </DialogTitle>
           <DialogDescription>
-            上传制度文档，支持 Word、PDF、Excel、PPT、TXT 等格式
+            支持 PDF、Word、TXT、Markdown 等格式，自动解析内容
           </DialogDescription>
         </DialogHeader>
 
@@ -254,6 +316,7 @@ export function DocumentUploader({
                     size="icon"
                     onClick={() => {
                       setFile(null);
+                      setParseProgress('');
                       if (fileInputRef.current) {
                         fileInputRef.current.value = '';
                       }
@@ -296,18 +359,31 @@ export function DocumentUploader({
               </Select>
             </div>
 
-            {/* 提示信息 */}
-            <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
-              <p className="text-xs text-blue-600 dark:text-blue-400">
-                💡 提示：对于 Word、PDF 等文件，上传后请在文档列表中点击查看，手动复制内容进行编辑。建议直接上传 TXT 或 Markdown 格式的纯文本文件，AI 可以直接学习内容。
+            {/* 解析进度 */}
+            {parseProgress && (
+              <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm">{parseProgress}</span>
+              </div>
+            )}
+
+            {/* 支持的格式说明 */}
+            <div className="p-3 bg-green-50 dark:bg-green-950 rounded-lg">
+              <p className="text-xs text-green-600 dark:text-green-400">
+                ✅ 支持自动解析的格式：
               </p>
+              <ul className="text-xs text-green-600 dark:text-green-400 mt-1 list-disc list-inside">
+                <li>PDF 文档 (.pdf) - 自动提取文字内容</li>
+                <li>Word 文档 (.doc, .docx) - 自动提取文字内容</li>
+                <li>文本文件 (.txt, .md) - 直接读取内容</li>
+              </ul>
             </div>
 
             {/* 状态提示 */}
             {uploadStatus === 'success' && (
               <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
                 <CheckCircle className="h-4 w-4" />
-                <span className="text-sm">文档上传成功！</span>
+                <span className="text-sm">文档上传成功！AI 已学习该文档内容</span>
               </div>
             )}
             {uploadStatus === 'error' && (
@@ -332,7 +408,7 @@ export function DocumentUploader({
               ) : (
                 <>
                   <Upload className="h-4 w-4 mr-2" />
-                  上传文档
+                  上传并解析
                 </>
               )}
             </Button>
